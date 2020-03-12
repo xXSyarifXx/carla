@@ -122,6 +122,10 @@ namespace traffic_manager {
     SnippetProfiler snippet_profiler;
     /// Map to keep track of last lane change location.
     std::unordered_map<ActorId, cg::Location> last_lane_change_location;
+    /// Reference of hero vehicle.
+    Actor hero_actor {nullptr};
+    /// Switch indicating hybrid physics mode.
+    bool hybrid_physics_mode {false};
 
     /// A simple method used to draw waypoint buffer ahead of a vehicle.
     void DrawBuffer(Buffer &buffer);

@@ -27,6 +27,7 @@ namespace LocalizationConstants {
   static const float STOPPED_VELOCITY_THRESHOLD = 0.8f;  // meters per second.
   static const float INTER_LANE_CHANGE_DISTANCE = 10.0f;
   static const float MAX_COLLISION_RADIUS = 100.0f;
+  static const float PHYSICS_RADIUS = 50.0f;
 
 } // namespace LocalizationConstants
 
@@ -84,6 +85,11 @@ namespace LocalizationConstants {
     // Selecting current timestamp from the world snapshot.
     current_timestamp = episode_proxy_ls.Lock()->GetWorldSnapshot().GetTimestamp();
 
+    cg::Location hero_location;
+    if (hybrid_physics_mode && hero_actor != nullptr) {
+      hero_location = hero_actor->GetLocation();
+    }
+
     // Looping over registered actors.
     for (uint64_t i = 0u; i < actor_list.size(); ++i) {
 
@@ -91,6 +97,22 @@ namespace LocalizationConstants {
       const ActorId actor_id = vehicle->GetId();
       const cg::Location vehicle_location = vehicle->GetLocation();
       const float vehicle_velocity = vehicle->GetVelocity().Length();
+
+      // Check if current actor is in range of hero actor.
+      bool in_range_of_hero_actor = false;
+      if (hybrid_physics_mode
+          && hero_actor != nullptr
+          && (cg::Math::DistanceSquared(vehicle_location, hero_location) < std::pow(PHYSICS_RADIUS, 2))) {
+        in_range_of_hero_actor = true;
+      }
+
+      ////////////////////////////// DEBUG /////////////////////////////
+      if (hybrid_physics_mode && in_range_of_hero_actor) {
+        debug_helper.DrawArrow(vehicle_location + cg::Location(0, 0, 2),
+                               hero_location + cg::Location(0, 0, 2),
+                               0.2f, 0.2f, {255u, 0u, 255u}, 0.05f);
+      }
+      //////////////////////////////////////////////////////////////////
 
       // Initializing idle times.
       if (idle_time.find(actor_id) == idle_time.end() && current_timestamp.elapsed_seconds != 0) {
@@ -354,6 +376,9 @@ namespace LocalizationConstants {
   }
 
   void LocalizationStage::DataReceiver() {
+
+    hybrid_physics_mode = parameters.GetHybridPhysicsMode();
+
     bool is_deleted_actors_present = false;
     std::set<uint32_t> world_actor_id;
     std::vector<ActorPtr> actor_list_to_be_deleted;
@@ -369,6 +394,7 @@ namespace LocalizationConstants {
       return filtered;
     };
 
+    // TODO: Combine this actor scanning logic with ScanUnregisteredActors()
     // Get all the actors.
     auto world_actors_list = episode_proxy_ls.Lock()->GetAllTheActorsInTheEpisode();
 
@@ -378,6 +404,24 @@ namespace LocalizationConstants {
     // Building a set of vehicle ids in the world.
     for (const auto &actor : vehicles) {
       world_actor_id.insert(actor.GetId());
+
+      // Identify hero vehicle if currently not present
+      // and system is in hybrid physics mode.
+      if (hybrid_physics_mode && hero_actor == nullptr) {
+        Actor actor_ptr = actor.Get(episode_proxy_ls);
+        for (auto&& attribute: actor_ptr->GetAttributes()) {
+          if (attribute.GetId() == "role_name" && attribute.GetValue() == "hero") {
+            hero_actor = actor_ptr;
+            break;
+          }
+        }
+      }
+    }
+
+    // Invalidate hero actor pointer if it is not alive anymore.
+    if (hybrid_physics_mode && hero_actor != nullptr
+        && world_actor_id.find(hero_actor->GetId()) == world_actor_id.end()) {
+      hero_actor = nullptr;
     }
 
     // Search for invalid/destroyed vehicles.
