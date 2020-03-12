@@ -11,6 +11,9 @@ pipeline
     {
         stage('windows and ubuntu in parallel')
         {
+            agent { label 'master' }
+            sh './home/jenkins/add_build_node.sh'
+
             parallel
             {
                 stage('ubuntu')
@@ -136,6 +139,13 @@ pipeline
                                     git commit -m "Updated c++ docs" || true
                                     git push
                                 '''
+                            }
+                            post
+                            {
+                                always
+                                {
+                                    deleteDir()
+                                }
                             }
                         }
                         stage('Cleanning')
